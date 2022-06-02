@@ -4,8 +4,16 @@ from tkinter import BooleanVar, Tk, Toplevel, ttk, Text
 from threading import Thread
 from typing import Callable
 
+from helper.exceptions import ClientNotStart
+from helper.lcu import LcuClient
+
 from loguru import logger
 from . import config as CONF
+
+
+def set_auto_analysis():
+    CONF.AUTO_ANALYSIS = not CONF.AUTO_ANALYSIS
+    logger.info("{}战绩分析", "启动" if CONF.AUTO_ANALYSIS else "关闭")
 
 
 def set_auto_confirm():
@@ -55,12 +63,26 @@ class AutoPick(Toplevel):
 
         # 自动保存当前选择
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.champions_file = CONF.ROOT / "champions.json"
 
-        # 显示英雄列表
-        with open("champions.json", "r", encoding="utf8") as f:
-            self.champions = json.load(f)
-            self.champions["not-selected"] = dict(
-                sorted(self.champions["not-selected"].items(), key=lambda x: int(x[0])))
+        # 第一次使用加载英雄列表
+        if not self.champions_file.exists():
+            logger.info("未找到英雄列表文件，正在下载...")
+            client = LcuClient()
+            self.champions = {
+                "not-selected": {
+                    str(champion["id"]): f"{champion['name']} {champion['title']}"
+                    for champion in client.get(CONF.ROUTE["all-champions"]).json()},
+                "selected": {},
+            }
+            with open(self.champions_file, "w", encoding="utf8") as f:
+                json.dump(self.champions, f, ensure_ascii=False)
+        else:
+            # 显示英雄列表
+            with open(self.champions_file, "r", encoding="utf8") as f:
+                self.champions = json.load(f)
+                self.champions["not-selected"] = dict(
+                    sorted(self.champions["not-selected"].items(), key=lambda x: int(x[0])))
 
         for champion_id, champion_name in self.champions["not-selected"].items():
             self.not_selected.insert(
@@ -79,7 +101,8 @@ class AutoPick(Toplevel):
         self.not_selected.delete(select)
         champion_name = self.champions["not-selected"].pop(champion_id)
 
-        self.selected.insert("", "end", text=champion_name, values=(champion_id,))
+        self.selected.insert("", "end", text=champion_name,
+                             values=(champion_id,))
         self.champions["selected"][champion_id] = champion_name
         CONF.AUTO_PICKS.append(champion_id)
 
@@ -89,13 +112,14 @@ class AutoPick(Toplevel):
         select = self.selected.focus()
         champion_id = str(self.selected.item(select)["values"][0])
         self.selected.delete(select)
-        champion_name = self.champions["selected"].pop(str(champion_id))
+        champion_name = self.champions["selected"].pop(champion_id)
         CONF.AUTO_PICKS.remove(champion_id)
 
         temp = {str(champion_id): champion_name}
         temp.update(self.champions["not-selected"])
         self.champions["not-selected"] = temp
-        self.not_selected.insert("", 0, text=champion_name, values=(champion_id,))
+        self.not_selected.insert(
+            "", 0, text=champion_name, values=(champion_id,))
 
     def move_up(self):
         """将已选择的英雄向上移动"""
@@ -113,9 +137,8 @@ class AutoPick(Toplevel):
         if idx < len(CONF.AUTO_PICKS) - 1:
             CONF.AUTO_PICKS.insert(idx + 1, CONF.AUTO_PICKS.pop(idx))
 
-
     def on_close(self):
-        with open("champions.json", "w", encoding="utf8") as f:
+        with open(self.champions_file, "w", encoding="utf8") as f:
             json.dump(self.champions, f, ensure_ascii=False)
         self.destroy()
 
@@ -128,22 +151,31 @@ class UI(Tk):
         self.task = task
         self.start_flag = False
         self.columnconfigure(0, weight=1)
+        self.columnconfigure(1, weight=1)
         self.rowconfigure(1, weight=1)
 
         # 自动确认选项
-        var = BooleanVar(value=CONF.AUTO_CONFIRM)
+        auto_pick_var = BooleanVar(value=CONF.AUTO_CONFIRM)
         ttk.Checkbutton(self,
                         text="自动确认",
                         command=set_auto_confirm,
-                        variable=var
+                        variable=auto_pick_var
                         ).grid(row=0, column=0)
+
+        # 自动分析选项
+        auto_analysis_var = BooleanVar(value=CONF.AUTO_ANALYSIS)
+        ttk.Checkbutton(self,
+                        text="战绩分析",
+                        command=set_auto_analysis,
+                        variable=auto_analysis_var
+                        ).grid(row=0, column=1)
 
         # 设置英雄优先级
         ttk.Button(self, text="自动抢英雄", command=self.auto_pick).grid(
-            row=0, column=1)
+            row=0, column=2)
 
         # 启动按钮
-        ttk.Button(self, text="启动助手", command=self.start).grid(row=0, column=2)
+        ttk.Button(self, text="启动助手", command=self.start).grid(row=0, column=3)
 
         # 日志框
         text = Text(self)
@@ -159,12 +191,12 @@ class UI(Tk):
                    format="{message}")
 
     def start(self):
-        if not self.start_flag:
-            self.start_flag = True
-
+        if not hasattr(LcuClient, "instance"):
             def with_callback():
-                self.task()
-                self.start_flag = False
+                try:
+                    self.task()
+                except ClientNotStart:
+                    logger.info("客户端未启动")
             Thread(target=with_callback, daemon=True).start()
         else:
             logger.info("客户端监听已启动")

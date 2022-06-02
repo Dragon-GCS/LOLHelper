@@ -1,8 +1,13 @@
-from enum import Enum
+import sys
+from pathlib import Path
 
 DEBUG = False
 AUTO_CONFIRM = True
+AUTO_ANALYSIS = True
 AUTO_PICKS = []
+
+ROOT = Path(sys.executable).parent if hasattr(sys, "frozen") \
+    else Path(__file__).parent.parent.resolve()
 
 
 PROCESS_NAME = "LeagueClientUx.exe"
@@ -24,6 +29,7 @@ ROUTE = {
     "cancel-add-friend": "/lol-chat/v1/friend-requests/{summonerId}",  # Delete
     # 英雄信息
     "champions": "/lol-game-data/assets/v1/champions/{id}.json",
+    "all-champions": "/lol-champions/v1/owned-champions-minimal",
     "current-champion": "/lol-champ-select/v1/current-champion",
     # 房间信息
     "session": "/lol-gameflow/v1/session",

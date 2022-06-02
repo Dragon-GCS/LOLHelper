@@ -1,6 +1,6 @@
 import asyncio
 import ssl
-from sys import stdout
+import sys
 
 from loguru import logger
 from websockets.client import connect
@@ -8,10 +8,10 @@ from websockets.exceptions import ConnectionClosedError
 
 from helper.gui import UI
 from helper.lcu import LcuClient
-from helper.exceptions import *
+from helper.exceptions import GameStart, GameEnd
 
 logger.remove()
-logger.add(stdout, format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:^10} | {message}</level>")
+logger.add(sys.stdout, format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:^10} | {message}</level>")
 
 
 async def monitor_client(client: LcuClient):
@@ -41,7 +41,5 @@ def main():
             logger.exception(e)
 
 if __name__ == '__main__':
-    # logger.add("debug.txt", format="{message}", level="ERROR")
-    # main()
     ui = UI(main)
     ui.mainloop()

@@ -19,7 +19,7 @@ from typing import List, Tuple, Union
 from loguru import logger
 from requests import Response
 
-from .algorithm import analysis_match_list, analysis_match_detail
+from .algorithm import analysis_match_list
 from .config import ROUTE
 from .exceptions import *
 from . import config as CONF
@@ -54,7 +54,7 @@ class LcuClient:
     summoner_id: str
     rolls: int
 
-    def __init__(self) -> None:
+    def __init__(self):
         token, port = get_lcu_info()
         if not token:
             raise ClientNotStart
@@ -121,7 +121,7 @@ class LcuClient:
 
     def get_match_history(self,
                           summoner_id: str,
-                          begin_index: int,
+                          begin_index: int = 0,
                           num: int = 20
                           ) -> List[dict]:
         """获取指定召唤师的比赛记录，每次请求最多返回20条记录
@@ -152,6 +152,7 @@ class LcuClient:
     def get_room_summoners_list(self, session_id: str) -> List[str]:
         """获取己方所有玩家的id"""
 
+        messages = []
         for _ in range(3):
             messages = [msg["fromSummonerId"]
                         for msg in self.get_messages(session_id)
@@ -160,7 +161,7 @@ class LcuClient:
                 return messages
             time.sleep(0.5)
 
-        return []
+        return messages
 
     def get_summoner_info(self):
         """获取当前登录的召唤师的基本信息"""
@@ -182,16 +183,18 @@ class LcuClient:
                 break
             time.sleep(1)
 
-    def calculate_summoner_score(self, summoner_id: str) -> Tuple[str, int]:
-        """计算指定玩家的分数，返回玩家名称和分数"""
+    def calculate_summoner_score(self, summoner_id: str) -> str:
+        """计算指定玩家的分数，返回玩家名称和分数，返回需要发送的消息"""
 
         summoner_name = self.get(ROUTE["summoner"].format(
             summonerId=summoner_id)).json()["displayName"]
         matches = self.get_match_history(summoner_id, 0)
-        bonus = analysis_match_list(matches)
-        logger.info("{} {}", summoner_name, 0)
-        # self.send_message(session_id, f"{name} {score}")
-        return summoner_name, 0
+        kda, damage_per_minus, repeats = analysis_match_list(matches)
+        message = f"{summoner_name}战绩信息："\
+                  f"kda={kda:.2f}，分均伤害={damage_per_minus:.2f}, "\
+                  f"{'连胜'+str(repeats) if repeats > 0 else '连败'+str(-repeats)}"
+        logger.info(message)
+        return message
 
     def analysis_summoners(self):
         """根据聊天信息获取己方所有召唤师，分析并计算己方的分数"""
@@ -205,9 +208,10 @@ class LcuClient:
             return
 
         summoners = self.get_room_summoners_list(session_id)
-        logger.info("开始计算玩家分数")
-        with ThreadPool(len(summoners)) as pool:
-            pool.map(self.calculate_summoner_score, summoners)
+        logger.info("开始计算玩家分数: {}", summoners)
+        with ThreadPool(5) as pool:
+            for msg in pool.imap(self.calculate_summoner_score, summoners):
+                self.send_message(session_id, msg)
 
     def pick_champion(self, champion_id: int, session_info: dict):
         """选择英雄"""
