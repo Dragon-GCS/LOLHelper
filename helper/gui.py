@@ -29,6 +29,7 @@ class AutoPick(Toplevel):
             self, orient="vertical", command=self.not_selected.yview)
         not_select_bar.grid(row=0, column=0, sticky="ns")
         self.not_selected.configure(yscrollcommand=not_select_bar.set)
+        self.not_selected.bind("<Double-1>", lambda _: self.add_champion())
         # 需要自动选择的英雄与对应的滚动条
         self.selected = ttk.Treeview(self, show="tree")
         self.selected.grid(row=0, column=3, sticky="nsew", pady=2, padx=2)
@@ -36,16 +37,21 @@ class AutoPick(Toplevel):
             self, orient="vertical", command=self.not_selected.yview)
         selected_bar.grid(row=0, column=4, sticky="ns")
         self.selected.configure(yscrollcommand=selected_bar.set)
+        self.selected.bind("<Double-1>", lambda _: self.remove_champion())
 
         # 选择按钮
         button_frame = ttk.Frame(self)
         button_frame.grid(row=0, column=2, sticky="nsew", padx=5)
         button_frame.rowconfigure(0, weight=1)
-        ttk.Button(button_frame, text="添加英雄",
+        ttk.Button(button_frame, text="添加英雄>>",
                    command=self.add_champion).grid(row=1)
-        ttk.Button(button_frame, text="删除英雄",
+        ttk.Button(button_frame, text="<<删除英雄",
                    command=self.remove_champion).grid(row=2)
-        button_frame.rowconfigure(3, weight=1)
+        ttk.Button(button_frame, text="向上移动↑↑",
+                   command=self.move_up).grid(row=3)
+        ttk.Button(button_frame, text="向下移动↓↓",
+                   command=self.move_down).grid(row=4)
+        button_frame.rowconfigure(5, weight=1)
 
         # 自动保存当前选择
         self.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -53,7 +59,8 @@ class AutoPick(Toplevel):
         # 显示英雄列表
         with open("champions.json", "r", encoding="utf8") as f:
             self.champions = json.load(f)
-            self.champions["not-selected"] = dict(sorted(self.champions["not-selected"].items()))
+            self.champions["not-selected"] = dict(
+                sorted(self.champions["not-selected"].items(), key=lambda x: int(x[0])))
 
         for champion_id, champion_name in self.champions["not-selected"].items():
             self.not_selected.insert(
@@ -62,31 +69,50 @@ class AutoPick(Toplevel):
         for champion_id, champion_name in self.champions["selected"].items():
             self.selected.insert(
                 "", "end", text=champion_name, values=champion_id)
-            CONF.AUTO_PICKS.append(champion_id)
+        CONF.AUTO_PICKS = list(self.champions["selected"])
 
     def add_champion(self):
-        # 将选择的英雄从未选择列表删除
+        """将未选择的英雄从列表添加至已选择列表结尾"""
+
         select = self.not_selected.focus()
-        champion_id = self.not_selected.item(select)["values"][0]
+        champion_id = str(self.not_selected.item(select)["values"][0])
         self.not_selected.delete(select)
-        champion_name = self.champions["not-selected"].pop(str(champion_id))
-        # 将选择的英雄添加到已选择列表
-        self.selected.insert("", "end", text=champion_name, values=champion_id)
-        self.champions["selected"][str(champion_id)] = champion_name
+        champion_name = self.champions["not-selected"].pop(champion_id)
+
+        self.selected.insert("", "end", text=champion_name, values=(champion_id,))
+        self.champions["selected"][champion_id] = champion_name
         CONF.AUTO_PICKS.append(champion_id)
 
     def remove_champion(self):
-        # 将选择的英雄从已选择列表删除
+        """将已选择的英雄从列表删除并添加至未选择列表开头"""
+
         select = self.selected.focus()
-        champion_id = self.selected.item(select)["values"][0]
+        champion_id = str(self.selected.item(select)["values"][0])
         self.selected.delete(select)
         champion_name = self.champions["selected"].pop(str(champion_id))
         CONF.AUTO_PICKS.remove(champion_id)
-        # 将选择的英雄添加到未选择列表首行
+
         temp = {str(champion_id): champion_name}
         temp.update(self.champions["not-selected"])
         self.champions["not-selected"] = temp
-        self.not_selected.insert("", 0, text=champion_name, values=champion_id)
+        self.not_selected.insert("", 0, text=champion_name, values=(champion_id,))
+
+    def move_up(self):
+        """将已选择的英雄向上移动"""
+        select = self.selected.focus()
+        idx = self.selected.index(select)
+        self.selected.move(select, "", idx - 1)
+        if idx > 0:
+            CONF.AUTO_PICKS.insert(idx - 1, CONF.AUTO_PICKS.pop(idx))
+
+    def move_down(self):
+        """将已选择的英雄向下移动"""
+        select = self.selected.focus()
+        idx = self.selected.index(select)
+        self.selected.move(select, "", idx + 1)
+        if idx < len(CONF.AUTO_PICKS) - 1:
+            CONF.AUTO_PICKS.insert(idx + 1, CONF.AUTO_PICKS.pop(idx))
+
 
     def on_close(self):
         with open("champions.json", "w", encoding="utf8") as f:

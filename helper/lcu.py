@@ -4,25 +4,25 @@
 # Created at 2022/05/27 10:06
 # Edit with VS Code
 
-
-from email import message
-from multiprocessing.pool import ThreadPool
-from pprint import pprint
-from .algorithm import *
-from .config import DEBUG, ROUTE
-from .exceptions import *
-from . import config as CONF
-from requests import Response
-from loguru import logger
-from typing import Dict, List, Tuple
-from websockets.typing import Data
-
 import json
 import requests
 import psutil
 import time
 import warnings
 warnings.filterwarnings("ignore")
+
+from multiprocessing.pool import ThreadPool
+from pprint import pprint
+from threading import Thread
+from typing import List, Tuple, Union
+
+from loguru import logger
+from requests import Response
+
+from .algorithm import analysis_match_list, analysis_match_detail
+from .config import ROUTE
+from .exceptions import *
+from . import config as CONF
 
 
 def get_lcu_info() -> Tuple[str, str]:
@@ -53,7 +53,6 @@ class LcuClient:
     puuid: str
     summoner_id: str
     rolls: int
-    game_mode: str
 
     def __init__(self) -> None:
         token, port = get_lcu_info()
@@ -61,6 +60,8 @@ class LcuClient:
             raise ClientNotStart
         self.base_url = f"https://riot:{token}@127.0.0.1:{port}"
         self.get_summoner_info()
+        self.picked = False
+        self.game_mode = ""
 
     def get(self, route: str) -> Response:
         return requests.get(self.base_url + route, verify=False)
@@ -151,18 +152,15 @@ class LcuClient:
     def get_room_summoners_list(self, session_id: str) -> List[str]:
         """获取己方所有玩家的id"""
 
-        messages = []
         for _ in range(3):
-            messages = self.get_messages(session_id)
+            messages = [msg["fromSummonerId"]
+                        for msg in self.get_messages(session_id)
+                        if msg["body"] == "joined_room" and msg["type"] == "system"]
             if len(messages) >= 5:
-                break
+                return messages
             time.sleep(0.5)
 
-        return [
-            msg["fromSummonerId"]
-            for msg in messages
-            if msg["body"] == "joined_room" and msg["type"] == "system"
-        ]
+        return []
 
     def get_summoner_info(self):
         """获取当前登录的召唤师的基本信息"""
@@ -180,7 +178,7 @@ class LcuClient:
         while True:
             resp = self.post(ROUTE["accept-game"])
             if str(resp.status_code).startswith("2"):
-                logger.info("对局已ji")
+                logger.info("对局已接受")
                 break
             time.sleep(1)
 
@@ -190,13 +188,13 @@ class LcuClient:
         summoner_name = self.get(ROUTE["summoner"].format(
             summonerId=summoner_id)).json()["displayName"]
         matches = self.get_match_history(summoner_id, 0)
-        bonus = calculate_wining_bonus(matches)
+        bonus = analysis_match_list(matches)
         logger.info("{} {}", summoner_name, 0)
         # self.send_message(session_id, f"{name} {score}")
         return summoner_name, 0
 
     def analysis_summoners(self):
-        """分析并计算当前己方所有玩家的分数"""
+        """根据聊天信息获取己方所有召唤师，分析并计算己方的分数"""
 
         for _ in range(3):
             time.sleep(0.5)
@@ -207,27 +205,26 @@ class LcuClient:
             return
 
         summoners = self.get_room_summoners_list(session_id)
-        print(summoners)
         logger.info("开始计算玩家分数")
         with ThreadPool(len(summoners)) as pool:
-            pool.map_async(self.calculate_summoner_score, summoners)
+            pool.map(self.calculate_summoner_score, summoners)
 
-    def pick_champion(self, champion_id: int):
+    def pick_champion(self, champion_id: int, session_info: dict):
         """选择英雄"""
 
-        if self.get_current_game_mode() == "ARAM":
-            self.post(ROUTE["swap-champion"].format(championId=champion_id))
+        # session_info = self.get(ROUTE["BpSession"]).json()
+        if session_info["benchEnabled"]:
+            if champion_id in session_info["benchChampionIds"]:
+                self.post(
+                    ROUTE["swap-champion"].format(championId=champion_id))
+                self.picked = True
             return
 
-        session_info = self.get(ROUTE["BpSession"]).json()
-        if not session_info.get("actions", []):
-            return
-
-        for actions in session_info["actions"]:
+        for actions in session_info.get("actions", []):
             for action in actions:
                 if action["actorCellId"] == session_info["localPlayerCellId"] \
-                and action['type'] == 'pick' \
-                and action['isInProgress']:
+                        and action['type'] == 'pick' \
+                        and action['isInProgress']:
                     self.patch(
                         ROUTE["bp-champion"].format(actionId=action["id"]),
                         data={
@@ -238,7 +235,7 @@ class LcuClient:
                     )
                     return
 
-    def handle_ws_response(self, resp: Data):
+    def handle_ws_response(self, resp: Union[str, bytes]):
         """监听并处理Lcu客户端通过WebSocket发送的消息，并在切换GameFlow时进行处理"""
 
         if not resp:
@@ -257,8 +254,9 @@ class LcuClient:
             logger.info(f"切换客户端状态: {content['data']}")
             if content["data"] == "ChampSelect":
                 CONF.DEBUG = True
+                self.picked = False
                 logger.info("当前游戏模式: {}", self.get_current_game_mode())
-                self.analysis_summoners()
+                Thread(target=self.analysis_summoners).start()
             if content["data"] == "ReadyCheck" and CONF.AUTO_CONFIRM:
                 self.accept_game()
             if content["data"] == "PreEndOfGame":
@@ -270,11 +268,13 @@ class LcuClient:
         #     logger.info(
         #         "当前英雄：{}", self.get_champion_name_by_id(content["data"]))
 
-        if CONF.DEBUG and content["uri"] == ROUTE["ChampionBench"]:
-            for champions in CONF.AUTO_PICKS:
-                if champions in content["data"]["benchChampionIds"]:
-                    self.pick_champion(champions)
-
+        if not self.picked and content["uri"] == ROUTE["BpSession"]:
+            for champion in CONF.AUTO_PICKS:
+                for summoner in content["data"]["myTeam"]:
+                    if summoner["summonerId"] == self.summoner_id and summoner["championId"] == champion:
+                        self.picked = True
+                        break
+                self.pick_champion(champion, content["data"])
 
 
 if __name__ == '__main__':
