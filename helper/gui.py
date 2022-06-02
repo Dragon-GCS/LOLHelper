@@ -128,6 +128,7 @@ class AutoPick(Toplevel):
         self.selected.move(select, "", idx - 1)
         if idx > 0:
             CONF.AUTO_PICKS.insert(idx - 1, CONF.AUTO_PICKS.pop(idx))
+        
 
     def move_down(self):
         """将已选择的英雄向下移动"""
@@ -138,6 +139,10 @@ class AutoPick(Toplevel):
             CONF.AUTO_PICKS.insert(idx + 1, CONF.AUTO_PICKS.pop(idx))
 
     def on_close(self):
+        self.champions["selected"] = {
+            str(champion_id): self.champions["selected"][champion_id]
+            for champion_id in CONF.AUTO_PICKS
+        }
         with open(self.champions_file, "w", encoding="utf8") as f:
             json.dump(self.champions, f, ensure_ascii=False)
         self.destroy()
