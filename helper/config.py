@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -5,12 +6,19 @@ DEBUG = False
 AUTO_CONFIRM = True
 AUTO_ANALYSIS = True
 AUTO_PICKS = []
+AUTO_PICK_SWITCH = True
+AUTO_PICK_CACHE = (Path(sys.executable).parent
+                   if hasattr(sys, "frozen")
+                   else Path(__file__).parent.parent.resolve()
+                   ) / "champions.json"
 
-ROOT = Path(sys.executable).parent if hasattr(sys, "frozen") \
-    else Path(__file__).parent.parent.resolve()
-
+if AUTO_PICK_CACHE.exists():
+    with open(AUTO_PICK_CACHE, "r", encoding="utf8") as f:
+        AUTO_PICKS = list(json.load(f)["selected"].keys())
 
 PROCESS_NAME = "LeagueClientUx.exe"
+
+
 class GameMode:
     ARAM = "ARAM"
     CLASSIC = "CLASSIC"

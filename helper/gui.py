@@ -20,6 +20,10 @@ def set_auto_confirm():
     CONF.AUTO_CONFIRM = not CONF.AUTO_CONFIRM
     logger.info("{}自动确认", "启动" if CONF.AUTO_CONFIRM else "关闭")
 
+def set_auto_pick():
+    CONF.AUTO_PICK_SWITCH = not CONF.AUTO_PICK_SWITCH
+    logger.info("{}自动选择", "启动" if CONF.AUTO_PICK_SWITCH else "关闭")
+
 
 class AutoPick(Toplevel):
     def __init__(self, master=None):
@@ -63,10 +67,9 @@ class AutoPick(Toplevel):
 
         # 自动保存当前选择
         self.protocol("WM_DELETE_WINDOW", self.on_close)
-        self.champions_file = CONF.ROOT / "champions.json"
 
         # 第一次使用加载英雄列表
-        if not self.champions_file.exists():
+        if not CONF.AUTO_PICK_CACHE.exists():
             logger.info("未找到英雄列表文件，正在下载...")
             client = LcuClient()
             self.champions = {
@@ -75,11 +78,11 @@ class AutoPick(Toplevel):
                     for champion in client.get(CONF.ROUTE["all-champions"]).json()},
                 "selected": {},
             }
-            with open(self.champions_file, "w", encoding="utf8") as f:
+            with open(CONF.AUTO_PICK_CACHE, "w", encoding="utf8") as f:
                 json.dump(self.champions, f, ensure_ascii=False)
         else:
             # 显示英雄列表
-            with open(self.champions_file, "r", encoding="utf8") as f:
+            with open(CONF.AUTO_PICK_CACHE, "r", encoding="utf8") as f:
                 self.champions = json.load(f)
                 self.champions["not-selected"] = dict(
                     sorted(self.champions["not-selected"].items(), key=lambda x: int(x[0])))
@@ -128,7 +131,6 @@ class AutoPick(Toplevel):
         self.selected.move(select, "", idx - 1)
         if idx > 0:
             CONF.AUTO_PICKS.insert(idx - 1, CONF.AUTO_PICKS.pop(idx))
-        
 
     def move_down(self):
         """将已选择的英雄向下移动"""
@@ -143,7 +145,7 @@ class AutoPick(Toplevel):
             str(champion_id): self.champions["selected"][champion_id]
             for champion_id in CONF.AUTO_PICKS
         }
-        with open(self.champions_file, "w", encoding="utf8") as f:
+        with open(CONF.AUTO_PICK_CACHE, "w", encoding="utf8") as f:
             json.dump(self.champions, f, ensure_ascii=False)
         self.destroy()
 
@@ -157,6 +159,7 @@ class UI(Tk):
         self.start_flag = False
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=1)
+        self.columnconfigure(2, weight=1)
         self.rowconfigure(1, weight=1)
 
         # 自动确认选项
@@ -175,21 +178,28 @@ class UI(Tk):
                         variable=auto_analysis_var
                         ).grid(row=0, column=1)
 
+        auto_pick_var = BooleanVar(value=CONF.AUTO_PICK_SWITCH)
+        ttk.Checkbutton(self,
+                   text="自动选英雄",
+                   command=set_auto_pick,
+                   variable=auto_pick_var
+                   ).grid(row=0, column=2)
+
         # 设置英雄优先级
-        ttk.Button(self, text="自动抢英雄", command=self.auto_pick).grid(
-            row=0, column=2)
+        ttk.Button(self, text="英雄优先级设置", command=self.auto_pick).grid(
+            row=0, column=3)
 
         # 启动按钮
-        ttk.Button(self, text="启动助手", command=self.start).grid(row=0, column=3)
+        ttk.Button(self, text="启动助手", command=self.start).grid(row=0, column=4)
 
         # 日志框
         text = Text(self)
-        text.grid(row=1, column=0, columnspan=4, sticky="nsew")
+        text.grid(row=1, column=0, columnspan=5, sticky="nsew")
 
         # 滚动条
         vertical_bar = ttk.Scrollbar(
             self, orient="vertical", command=text.yview)
-        vertical_bar.grid(row=1, column=5, sticky="ns")
+        vertical_bar.grid(row=1, column=6, sticky="ns")
 
         text.configure(yscrollcommand=vertical_bar.set)
         logger.add(lambda msg: text.insert("end", msg) or text.see("end"),

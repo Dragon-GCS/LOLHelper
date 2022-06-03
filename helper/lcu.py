@@ -75,7 +75,7 @@ class LcuClient:
     def send_message(self, session_id: str, message: str):
         """发送消息至指定会话"""
 
-        logger.info("发送消息: {}", message)
+        logger.info("发送消息:\n{}", message)
         return self.post(
             ROUTE["conversation-msg"].format(conversationId=session_id),
             data={"body": message, "type": "chat"})
@@ -190,10 +190,9 @@ class LcuClient:
             summonerId=summoner_id)).json()["displayName"]
         matches = self.get_match_history(summoner_id, 0)
         kda, damage_per_minus, repeats = analysis_match_list(matches)
-        message = f"{summoner_name}战绩信息："\
+        message = f"{summoner_name}战绩信息：\n"\
                   f"kda={kda:.2f}，分均伤害={damage_per_minus:.2f}, "\
-                  f"{'连胜'+str(repeats) if repeats > 0 else '连败'+str(-repeats)}"
-        logger.info(message)
+                  f"{str(repeats) + '连胜' if repeats > 0 else str(-repeats) + '连败'}"
         return message
 
     def analysis_summoners(self):
@@ -217,11 +216,16 @@ class LcuClient:
         """选择英雄"""
 
         # session_info = self.get(ROUTE["BpSession"]).json()
+        if self.picked:
+            return
+
         if session_info["benchEnabled"]:
             if champion_id in session_info["benchChampionIds"]:
                 self.post(
                     ROUTE["swap-champion"].format(championId=champion_id))
                 self.picked = True
+                logger.info(
+                    "自动选择英雄: {}", self.get_champion_name_by_id(champion_id))
             return
 
         for actions in session_info.get("actions", []):
@@ -237,6 +241,9 @@ class LcuClient:
                             "championId": champion_id
                         }
                     )
+                    self.picked = True
+                    logger.info(
+                        "自动选择英雄: {}", self.get_champion_name_by_id(champion_id))
                     return
 
     def handle_ws_response(self, resp: Union[str, bytes]):
@@ -272,7 +279,8 @@ class LcuClient:
         #     logger.info(
         #         "当前英雄：{}", self.get_champion_name_by_id(content["data"]))
 
-        if not self.picked and content["uri"] == ROUTE["BpSession"]:
+        if not self.picked and content["uri"] == ROUTE["BpSession"] \
+            and CONF.AUTO_PICK_SWITCH:
             for champion in CONF.AUTO_PICKS:
                 for summoner in content["data"]["myTeam"]:
                     if summoner["summonerId"] == self.summoner_id and summoner["championId"] == champion:
