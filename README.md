@@ -1,16 +1,19 @@
 # LoL ARAM Helper
 
-[qwq_lol_helper](https://gitee.com/qwq_qwq_qwq/lol-helper/blob/master/src/main/java/com/qwq/service/impl/LcuServiceImpl.java)
-[对局先知](https://github.com/real-web-world/hh-lol-prophet)
-[awesome lpl developer tools](https://github.com/CommunityDragon/awesome-league#developer-tools)
-[riot developer docs](https://developer.riotgames.com/docs/lol)
-[lcu api doc](https://lcu.vivide.re/)
-[bilibili](https://www.bilibili.com/read/cv6477040/)
-
-对局时不关闭客户端
+英雄联盟大乱斗助手
 
 ## 功能
 
 - 自动选人
 - 自动确认
-- 计算队友胜率
+- 获取队友战绩并发送消息
+
+``使用时建议不要关闭客户端``
+
+## 参考资料
+
+[从零开始写个LOL上等马软件](https://www.bilibili.com/video/BV1A34y117kh)
+[对局先知](https://github.com/real-web-world/hh-lol-prophet)
+[awesome lpl developer tools](https://github.com/CommunityDragon/awesome-league#developer-tools)
+[riot developer docs](https://developer.riotgames.com/docs/lol)
+[lcu api doc](https://lcu.vivide.re/)

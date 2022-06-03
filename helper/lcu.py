@@ -54,6 +54,11 @@ class LcuClient:
     summoner_id: str
     rolls: int
 
+    def __new__(cls):
+        if not hasattr(cls, "instance"):
+            cls.instance = super().__new__(cls)
+        return cls.instance
+
     def __init__(self):
         token, port = get_lcu_info()
         if not token:
