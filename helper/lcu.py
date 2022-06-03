@@ -54,11 +54,6 @@ class LcuClient:
     summoner_id: str
     rolls: int
 
-    def __new__(cls):
-        if not hasattr(cls, "instance"):
-            cls.instance = super().__new__(cls)
-        return cls.instance
-
     def __init__(self):
         token, port = get_lcu_info()
         if not token:
@@ -194,7 +189,8 @@ class LcuClient:
         summoner_name = self.get(ROUTE["summoner"].format(
             summonerId=summoner_id)).json()["displayName"]
         matches = self.get_match_history(summoner_id, 0)
-        kda, damage_per_minus, repeats = analysis_match_list(matches)
+        game_mode = self.get_current_game_mode()
+        kda, damage_per_minus, repeats = analysis_match_list(matches, game_mode)
         message = f"{summoner_name}战绩信息：\n"\
                   f"kda={kda:.2f}，分均伤害={damage_per_minus:.2f}, "\
                   f"{str(repeats) + '连胜' if repeats > 0 else str(-repeats) + '连败'}"

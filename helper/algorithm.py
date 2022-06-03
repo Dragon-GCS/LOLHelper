@@ -1,24 +1,28 @@
+from time import time
 from typing import List, Tuple
 
-MATCH_ITEM = [
-    "assists", "deaths", "kills", "win"
-]
+TIME_LIMIT = 60 * 60 * 5    # 5 hours
 
-def analysis_match_list(matches: List[dict]) -> Tuple[float, float, int]:
+def analysis_match_list(matches: List[dict], game_mode: str) -> Tuple[float, float, int]:
     """根据比赛记录计算召唤师kda、分均伤害和连胜/连败场次"""
 
-    kills, deaths, assists, damages = 0, 0, 0, 0
-    matches = sorted(matches, key=lambda x: x["gameCreation"], reverse=True)
-    repeats, prev, stop = 0, matches[0]["participants"][0]["stats"]["win"], False
+    # total是总权重
+    total,  stop = 0, False
+    kills, deaths, assists, damages, repeats = 0, 0, 0, 0, 0
     for match in sorted(matches, key=lambda x: x["gameCreation"], reverse=True):
+        if not match["gameMode"] == game_mode:
+            continue
+        weight = 1 if (time() / 1000 - match["gameCreation"]) < TIME_LIMIT else 0.2
         detail = match["participants"][0]["stats"]
-        kills += detail["kills"]
-        deaths += detail["deaths"]
-        assists += detail["assists"]
-        damages += detail["totalDamageDealtToChampions"] / match["gameDuration"] * 60
-        if detail["win"] == prev and not stop:
+        kills += detail["kills"] * weight
+        deaths += detail["deaths"] * weight
+        assists += detail["assists"] * weight
+        damages += detail["totalDamageDealtToChampions"] * weight / match["gameDuration"] * 60
+        total += weight
+        prev = locals().get("prev") or detail["win"]
+        if detail["win"] == prev and not stop: 
             repeats += 1 if prev else -1
         else:
             stop = True
 
-    return (kills + assists) / (deaths + 1), damages / len(matches), repeats
+    return (kills + assists) / (deaths or 1), damages / total, repeats

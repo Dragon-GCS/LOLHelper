@@ -206,12 +206,15 @@ class UI(Tk):
                    format="{message}")
 
     def start(self):
-        if not hasattr(LcuClient, "instance"):
+        if not self.start_flag:
             def with_callback():
+                self.start_flag = True
                 try:
                     self.task()
                 except ClientNotStart:
                     logger.info("客户端未启动")
+                logger.info("客户端监听已停止")
+                self.start_flag = False
             Thread(target=with_callback, daemon=True).start()
         else:
             logger.info("客户端监听已启动")

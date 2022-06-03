@@ -35,10 +35,12 @@ def main():
         except GameEnd:
             logger.info("对局已结束")
         except ConnectionRefusedError:
-            logger.info("客户端未启动")
+            logger.info("客户端已关闭")
             break
         except Exception as e:
             logger.exception(e)
+            break
+    print("exit")
 
 if __name__ == '__main__':
     ui = UI(main)
