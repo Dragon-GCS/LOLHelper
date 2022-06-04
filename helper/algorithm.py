@@ -19,8 +19,8 @@ def analysis_match_list(matches: List[dict], game_mode: str) -> Tuple[float, flo
         assists += detail["assists"] * weight
         damages += detail["totalDamageDealtToChampions"] * weight / match["gameDuration"] * 60
         total += weight
-        prev = locals().get("prev") or detail["win"]
-        if detail["win"] == prev and not stop: 
+        prev = detail["win"] if locals().get("prev") is None else locals().get("prev")
+        if not stop and detail["win"] == prev:
             repeats += 1 if prev else -1
         else:
             stop = True
