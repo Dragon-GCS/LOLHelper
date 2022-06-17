@@ -190,10 +190,10 @@ class LcuClient:
             summonerId=summoner_id)).json()["displayName"]
         matches = self.get_match_history(summoner_id, 0)
         game_mode = self.get_current_game_mode()
-        kda, damage_per_minus, repeats = analysis_match_list(matches, game_mode)
+        kda, damage_per_minus, repeats, win_rate = analysis_match_list(matches, game_mode)
         message = f"{summoner_name}战绩信息：\n"\
-                  f"kda={kda:.2f}，分均伤害={damage_per_minus:.2f}, "\
-                  f"{str(repeats) + '连胜' if repeats > 0 else str(-repeats) + '连败'}"
+                  f"kda={kda:.2f}，分均伤害={damage_per_minus:.2f}\n"\
+                  f"胜率={win_rate:2.0%}，{str(repeats) + '连胜' if repeats > 0 else str(-repeats) + '连败'}"
         return message
 
     def analysis_summoners(self):
@@ -211,6 +211,7 @@ class LcuClient:
         logger.info("开始计算玩家分数: {}", summoners)
         with ThreadPool(5) as pool:
             for msg in pool.imap(self.calculate_summoner_score, summoners):
+                time.sleep(0.5) # 防止晚进入房间的玩家看不到信息
                 self.send_message(session_id, msg)
 
     def pick_champion(self, champion_id: int, session_info: dict):
