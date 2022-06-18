@@ -14,7 +14,7 @@ warnings.filterwarnings("ignore")
 from multiprocessing.pool import ThreadPool
 from pprint import pprint
 from threading import Thread
-from typing import List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 from loguru import logger
 from requests import Response
@@ -206,13 +206,13 @@ class LcuClient:
         else:
             logger.error("Not found champion select session")
             return
-
         summoners = self.get_room_summoners_list(session_id)
         logger.info("开始计算玩家分数: {}", summoners)
         with ThreadPool(5) as pool:
             for msg in pool.imap(self.calculate_summoner_score, summoners):
                 time.sleep(0.5) # 防止晚进入房间的玩家看不到信息
                 self.send_message(session_id, msg)
+        self.send_message(session_id, "乱斗助手下载地址：gitee上搜lolhelper。作者Dragon-GCS")
 
     def pick_champion(self, champion_id: int, session_info: dict):
         """选择英雄"""
@@ -247,6 +247,15 @@ class LcuClient:
                     logger.info(
                         "自动选择英雄: {}", self.get_champion_name_by_id(champion_id))
                     return
+
+    def auto_pick(self, data: Dict):
+        """自动选择英雄"""
+        for champion in CONF.AUTO_PICKS:
+            for summoner in data["myTeam"]:
+                if summoner["summonerId"] == self.summoner_id and summoner["championId"] == champion:
+                    self.picked = True
+                    return
+            self.pick_champion(int(champion), data)
 
     def handle_ws_response(self, resp: Union[str, bytes]):
         """监听并处理Lcu客户端通过WebSocket发送的消息，并在切换GameFlow时进行处理"""
@@ -283,12 +292,7 @@ class LcuClient:
 
         if not self.picked and content["uri"] == ROUTE["BpSession"] \
             and CONF.AUTO_PICK_SWITCH:
-            for champion in CONF.AUTO_PICKS:
-                for summoner in content["data"]["myTeam"]:
-                    if summoner["summonerId"] == self.summoner_id and summoner["championId"] == champion:
-                        self.picked = True
-                        break
-                self.pick_champion(champion, content["data"])
+            self.auto_pick(content["data"])
 
 
 if __name__ == '__main__':
