@@ -251,11 +251,12 @@ class LcuClient:
     def auto_pick(self, data: Dict):
         """自动选择英雄"""
         for champion in CONF.AUTO_PICKS:
+            champion = int(champion)
             for summoner in data["myTeam"]:
                 if summoner["summonerId"] == self.summoner_id and summoner["championId"] == champion:
                     self.picked = True
                     return
-            self.pick_champion(int(champion), data)
+            self.pick_champion(champion, data)
 
     def handle_ws_response(self, resp: Union[str, bytes]):
         """监听并处理Lcu客户端通过WebSocket发送的消息，并在切换GameFlow时进行处理"""
