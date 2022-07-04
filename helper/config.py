@@ -2,7 +2,7 @@ import json
 import sys
 from pathlib import Path
 
-DEBUG = False
+VERSION = "v1.1"
 if hasattr(sys, "frozen"):
     ROOT = Path(sys.executable).parent
 else:

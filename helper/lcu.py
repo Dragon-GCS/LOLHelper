@@ -281,7 +281,6 @@ class LcuClient:
         if content["uri"] == ROUTE["GameFlow"]:
             logger.info(f"切换客户端状态: {content['data']}")
             if content["data"] == "ChampSelect":
-                CONF.DEBUG = True
                 self.picked = False
                 logger.info("当前游戏模式: {}", self.get_current_game_mode())
                 Thread(target=self.analysis_summoners).start()

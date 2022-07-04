@@ -157,7 +157,7 @@ class AutoPick(Toplevel):
 class UI(Tk):
     def __init__(self, task: Callable):
         super().__init__()
-        self.title("LOL大乱斗助手")
+        self.title("LOL大乱斗助手" + CONF.VERSION)
         self.geometry("480x480")
         self.task = task
         self.start_flag = False
