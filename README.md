@@ -1,6 +1,6 @@
 # LoL ARAM Helper
 
-英雄联盟大乱斗助手
+英雄联盟大乱斗助手 [[B站教程]](https://www.bilibili.com/video/BV1U341137PF)
 
 ## 功能
 
