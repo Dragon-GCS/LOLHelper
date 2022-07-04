@@ -3,15 +3,26 @@ import sys
 from pathlib import Path
 
 DEBUG = False
+if hasattr(sys, "frozen"):
+    ROOT = Path(sys.executable).parent
+else:
+    ROOT = Path(__file__).parent.parent.resolve()
+
 AUTO_CONFIRM = True
 AUTO_ANALYSIS = True
 AUTO_PICKS = []
 AUTO_PICK_SWITCH = True
-AUTO_PICK_CACHE = (Path(sys.executable).parent
-                   if hasattr(sys, "frozen")
-                   else Path(__file__).parent.parent.resolve()
-                   ) / "champions.json"
+AUTO_PICK_CACHE = ROOT / "champions.json"
 
+SAVE_MATCH = False
+MATCH_FILE = ROOT / "matches.txt"
+SAVE_ITEM = [
+    "assists", "champLevel", "damageSelfMitigated", "deaths", "firstBloodKill",
+    "goldEarned", "killingSprees", "kills", "largestMultiKill",
+    "longestTimeSpentLiving", "pentaKills", "quadraKills", "totalDamageDealt",
+    "totalDamageDealtToChampions", "totalDamageTaken", "totalHeal", "totalMinionsKilled",
+    "tripleKills", "trueDamageDealt", "win"
+]
 if AUTO_PICK_CACHE.exists():
     with open(AUTO_PICK_CACHE, "r", encoding="utf8") as f:
         AUTO_PICKS = list(json.load(f)["selected"].keys())

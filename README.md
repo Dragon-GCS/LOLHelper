@@ -7,6 +7,7 @@
 - 自动选人
 - 自动确认
 - 获取队友战绩并发送消息
+- 保存队伍成员近20场战绩信息
 
 ``使用时建议不要关闭客户端``
 
@@ -17,3 +18,8 @@
 - [awesome lpl developer tools](https://github.com/CommunityDragon/awesome-league#developer-tools)
 - [riot developer docs](https://developer.riotgames.com/docs/lol)
 - [lcu api doc](https://lcu.vivide.re/)
+
+## Update log
+
+- v1.1 add: 保存队伍成员战绩开关，用于后续数据分析
+- v1.0 自动选人、自动确认、战绩分析

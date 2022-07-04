@@ -14,7 +14,7 @@ warnings.filterwarnings("ignore")
 from multiprocessing.pool import ThreadPool
 from pprint import pprint
 from threading import Thread
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, TypedDict, Union
 
 from loguru import logger
 from requests import Response
@@ -48,10 +48,15 @@ def get_lcu_info() -> Tuple[str, str]:
     return token, port
 
 
+class MemberMatches(TypedDict):
+    summoner_id: int      # 玩家id
+    matches: List[Dict] # 最近20场游戏数据
+
+
 class LcuClient:
     name: str
     puuid: str
-    summoner_id: str
+    summoner_id: int
     rolls: int
 
     def __init__(self):
@@ -80,24 +85,6 @@ class LcuClient:
             ROUTE["conversation-msg"].format(conversationId=session_id),
             data={"body": message, "type": "chat"})
 
-    def get_all_matches(self, summoner_id: str):
-        """获取指定召唤师的所有比赛记录"""
-
-        # items = ["gameId", "gameMode", "gameDuration",
-        #          "gameCreation", "participants"]
-        matches = []
-        start_index = 0
-        while True:
-            result = self.get_match_history(summoner_id, start_index)
-            matches = result + matches
-            if not result:
-                break
-            logger.debug("Get matches: {}", len(matches))
-            start_index += 20
-            time.sleep(0.5)
-
-        return matches
-
     def get_champion_name_by_id(self, champion_id: int) -> str:
         """根据英雄ID获取英雄名称"""
 
@@ -120,7 +107,7 @@ class LcuClient:
         ).json().get("map", {}).get("gameMode", "")
 
     def get_match_history(self,
-                          summoner_id: str,
+                          summoner_id: int,
                           begin_index: int = 0,
                           num: int = 20
                           ) -> List[dict]:
@@ -149,7 +136,7 @@ class LcuClient:
 
         return self.get(ROUTE["conversation-msg"].format(conversationId=session_id)).json()
 
-    def get_room_summoners_list(self, session_id: str) -> List[str]:
+    def get_room_summoners_list(self, session_id: str) -> List[int]:
         """获取己方所有玩家的id"""
 
         messages = []
@@ -183,8 +170,8 @@ class LcuClient:
                 break
             time.sleep(1)
 
-    def calculate_summoner_score(self, summoner_id: str) -> str:
-        """计算指定玩家的分数，返回玩家名称和分数，返回需要发送的消息"""
+    def calculate_summoner_score(self, summoner_id: int) -> Tuple[MemberMatches, str]:
+        """计算指定玩家的分数，返回玩家名称和分数，返回需要发送的消息和近20场游戏数据"""
 
         summoner_name = self.get(ROUTE["summoner"].format(
             summonerId=summoner_id)).json()["displayName"]
@@ -194,7 +181,17 @@ class LcuClient:
         message = f"{summoner_name}战绩信息：\n"\
                   f"kda={kda:.2f}，分均伤害={damage_per_minus:.2f}\n"\
                   f"胜率={win_rate:2.0%}，{str(repeats) + '连胜' if repeats > 0 else str(-repeats) + '连败'}"
-        return message
+        return MemberMatches(
+            summoner_id=summoner_id,
+            matches=[dict((
+                ("creation", match["gameCreation"]),
+                ("duration", match["gameDuration"]),
+                ("mode", match["gameMode"]),
+                *((k, v) for k,v in match["participants"][0]["stats"].items()
+                   if k in CONF.SAVE_ITEM)
+                ))
+                for match in matches]
+            ), message
 
     def analysis_summoners(self):
         """根据聊天信息获取己方所有召唤师，分析并计算己方的分数"""
@@ -208,11 +205,19 @@ class LcuClient:
             return
         summoners = self.get_room_summoners_list(session_id)
         logger.info("开始计算玩家分数: {}", summoners)
+
+        members_matches = []
         with ThreadPool(5) as pool:
-            for msg in pool.imap(self.calculate_summoner_score, summoners):
+            for matches, msg in pool.imap(self.calculate_summoner_score, summoners):
                 time.sleep(0.5) # 防止晚进入房间的玩家看不到信息
                 self.send_message(session_id, msg)
+                members_matches.append(matches)
         self.send_message(session_id, "乱斗助手下载地址：gitee上搜lolhelper。作者Dragon-GCS")
+
+        if CONF.SAVE_MATCH:
+            with open(CONF.MATCH_FILE, "a") as f:
+                f.write(json.dumps(members_matches))
+                f.write("\n")
 
     def pick_champion(self, champion_id: int, session_info: dict):
         """选择英雄"""

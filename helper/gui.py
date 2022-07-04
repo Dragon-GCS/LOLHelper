@@ -13,16 +13,20 @@ from . import config as CONF
 
 def set_auto_analysis():
     CONF.AUTO_ANALYSIS = not CONF.AUTO_ANALYSIS
-    logger.info("{}战绩分析", "启动" if CONF.AUTO_ANALYSIS else "关闭")
+    logger.info("战绩分析：{}", "开启" if CONF.AUTO_ANALYSIS else "关闭")
 
 
 def set_auto_confirm():
     CONF.AUTO_CONFIRM = not CONF.AUTO_CONFIRM
-    logger.info("{}自动确认", "启动" if CONF.AUTO_CONFIRM else "关闭")
+    logger.info("自动确认：{}", "开启" if CONF.AUTO_CONFIRM else "关闭")
 
 def set_auto_pick():
     CONF.AUTO_PICK_SWITCH = not CONF.AUTO_PICK_SWITCH
-    logger.info("{}自动选择", "启动" if CONF.AUTO_PICK_SWITCH else "关闭")
+    logger.info("自动选择：{}", "开启" if CONF.AUTO_PICK_SWITCH else "关闭")
+
+def set_save_match():
+    CONF.SAVE_MATCH = not CONF.SAVE_MATCH
+    logger.info("保存队友最近20场比赛记录：{}", "开启" if CONF.SAVE_MATCH else "关闭")
 
 
 class AutoPick(Toplevel):
@@ -160,50 +164,65 @@ class UI(Tk):
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=1)
         self.columnconfigure(2, weight=1)
-        self.rowconfigure(1, weight=1)
+        self.rowconfigure(2, weight=1)
 
-        # 自动确认选项
+        # 自动确认开关
         auto_pick_var = BooleanVar(value=CONF.AUTO_CONFIRM)
         ttk.Checkbutton(self,
                         text="自动确认",
                         command=set_auto_confirm,
                         variable=auto_pick_var
-                        ).grid(row=0, column=0)
+                        ).grid(row=0, column=0, sticky="we")
 
-        # 自动分析选项
+        # 自动选择英雄开关
+        auto_pick_var = BooleanVar(value=CONF.AUTO_PICK_SWITCH)
+        ttk.Checkbutton(self,
+                        text="自动选英雄",
+                        command=set_auto_pick,
+                        variable=auto_pick_var
+                        ).grid(row=0, column=1, sticky="we")
+
+        # 自动分析开关
         auto_analysis_var = BooleanVar(value=CONF.AUTO_ANALYSIS)
         ttk.Checkbutton(self,
                         text="战绩分析",
                         command=set_auto_analysis,
                         variable=auto_analysis_var
-                        ).grid(row=0, column=1)
+                        ).grid(row=1, column=0, sticky="we")
 
-        auto_pick_var = BooleanVar(value=CONF.AUTO_PICK_SWITCH)
+        # 保存队友最近20场比赛记录
+        save_match_var = BooleanVar(value=CONF.SAVE_MATCH)
         ttk.Checkbutton(self,
-                   text="自动选英雄",
-                   command=set_auto_pick,
-                   variable=auto_pick_var
-                   ).grid(row=0, column=2)
+                        text="保存队友记录",
+                        command=set_save_match,
+                        variable=save_match_var
+                        ).grid(row=1, column=1, sticky="we")
 
         # 设置英雄优先级
-        ttk.Button(self, text="英雄优先级设置", command=self.auto_pick).grid(
-            row=0, column=3)
+        ttk.Button(
+            self, text="英雄优先级设置", command=self.auto_pick
+            ).grid(row=0, column=2, sticky="we")
 
         # 启动按钮
-        ttk.Button(self, text="启动助手", command=self.start).grid(row=0, column=4)
+        ttk.Button(
+            self, text="启动助手", command=self.start).grid(row=1, column=2, sticky="we")
 
         # 日志框
         text = Text(self)
-        text.grid(row=1, column=0, columnspan=5, sticky="nsew")
+        text.grid(row=2, column=0, columnspan=3, sticky="nsew")
 
         # 滚动条
         vertical_bar = ttk.Scrollbar(
             self, orient="vertical", command=text.yview)
-        vertical_bar.grid(row=1, column=6, sticky="ns")
+        vertical_bar.grid(row=2, column=3, sticky="ns")
 
         text.configure(yscrollcommand=vertical_bar.set)
         logger.add(lambda msg: text.insert("end", msg) or text.see("end"),
-                   format="{message}")
+                   format="{time:HH:mm:ss} {message}")
+        logger.info("自动确认：{}", "开启" if CONF.AUTO_CONFIRM else "关闭")
+        logger.info("自动选人：{}", "开启" if CONF.AUTO_PICKS else "关闭")
+        logger.info("战绩分析：{}", "开启" if CONF.AUTO_ANALYSIS else "关闭")
+        logger.info("保存队友记录：{}", "开启" if CONF.SAVE_MATCH else "关闭")
 
     def start(self):
         if not self.start_flag:
