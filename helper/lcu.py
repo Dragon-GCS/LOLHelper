@@ -283,7 +283,8 @@ class LcuClient:
             if content["data"] == "ChampSelect":
                 self.picked = False
                 logger.info("当前游戏模式: {}", self.get_current_game_mode())
-                Thread(target=self.analysis_summoners).start()
+                if CONF.AUTO_ANALYSIS:
+                    Thread(target=self.analysis_summoners).start()
             if content["data"] == "ReadyCheck" and CONF.AUTO_CONFIRM:
                 self.accept_game()
             if content["data"] == "PreEndOfGame":
