@@ -11,7 +11,10 @@ from helper.lcu import LcuClient
 from helper.exceptions import GameStart, GameEnd
 
 logger.remove()
-logger.add(sys.stdout, format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:^10} | {message}</level>")
+logger.add(
+    sys.stdout,
+    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green>" \
+           " | <level>{level:^10} | {message}</level>")
 
 
 async def monitor_client(client: LcuClient):

@@ -11,6 +11,17 @@
 
 ``使用时建议不要关闭客户端``
 
+## 使用方法
+
+1. Release界面直接下载打包好的可执行文件
+2. 源码运行（需要有python环境）：
+    ```shell
+    > git clone https://github.com/Dragon-GCS/LOLHelper.git
+    > cd LOLHelper
+    > pip install -r requirements.txt
+    > python main.pyw
+    ```
+
 ## 参考资料
 
 - [从零开始写个LOL上等马软件](https://www.bilibili.com/video/BV1A34y117kh)
