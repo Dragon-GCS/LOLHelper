@@ -67,6 +67,7 @@ class LcuClient:
         self.get_summoner_info()
         self.picked = False
         self.game_mode = ""
+        self.members_matches: List[MemberMatches] = []
 
     def get(self, route: str) -> Response:
         return requests.get(self.base_url + route, verify=False)
@@ -206,18 +207,12 @@ class LcuClient:
         summoners = self.get_room_summoners_list(session_id)
         logger.info("开始计算玩家分数: {}", summoners)
 
-        members_matches = []
         with ThreadPool(5) as pool:
             for matches, msg in pool.imap(self.calculate_summoner_score, summoners):
                 time.sleep(0.5) # 防止晚进入房间的玩家看不到信息
                 self.send_message(session_id, msg)
-                members_matches.append(matches)
+                self.members_matches.append(matches)
         self.send_message(session_id, "乱斗助手下载地址：gitee上搜lolhelper。作者Dragon-GCS")
-
-        if CONF.SAVE_MATCH:
-            with open(CONF.MATCH_FILE, "a") as f:
-                f.write(json.dumps(members_matches))
-                f.write("\n")
 
     def pick_champion(self, champion_id: int, session_info: dict):
         """选择英雄"""
@@ -291,6 +286,11 @@ class LcuClient:
                 raise GameEnd()
             if content["data"] == "InProgress":
                 raise GameStart()
+            if content["data"] == "GameStart" and CONF.SAVE_MATCH and self.members_matches:
+                with open(CONF.MATCH_FILE, "a") as f:
+                    f.write(json.dumps(self.members_matches))
+                    f.write("\n")
+                self.members_matches = []
 
         # if content["uri"] == ROUTE["current-champion"]:
         #     logger.info(
