@@ -16,15 +16,18 @@ AUTO_PICK_CACHE = ROOT / "champions.json"
 
 SAVE_MATCH = False
 MATCH_FILE = ROOT / "matches.txt"
-SAVE_ITEM = [
+# fmt: off
+SAVE_ITEM = {
     "assists", "champLevel", "damageSelfMitigated", "deaths", "firstBloodKill",
     "goldEarned", "killingSprees", "kills", "largestMultiKill",
     "longestTimeSpentLiving", "pentaKills", "quadraKills", "totalDamageDealt",
     "totalDamageDealtToChampions", "totalDamageTaken", "totalHeal", "totalMinionsKilled",
-    "tripleKills", "trueDamageDealt", "win"
-]
+    "tripleKills", "trueDamageDealt", "win",
+}
+# fmt: on
+
 if AUTO_PICK_CACHE.exists():
-    with open(AUTO_PICK_CACHE, "r", encoding="utf8") as f:
+    with AUTO_PICK_CACHE.open("r", encoding="utf8") as f:
         AUTO_PICKS = list(json.load(f)["selected"].keys())
 
 PROCESS_NAME = "LeagueClientUx.exe"
@@ -41,7 +44,7 @@ ROUTE = {
     # 选人信息
     "BpSession": "/lol-champ-select/v1/session",
     "add-friend": "/lol-chat/v1/friend-requests",  # POST
-    "accept-game": "/lol-matchmaking/v1/ready-check/accept",    # post
+    "accept-game": "/lol-matchmaking/v1/ready-check/accept",  # post
     "blue-essence": "/lol-inventory/v1/wallet/lol_blue_essence",
     "bp-champion": "/lol-champ-select/v1/session/actions/{actionId}",  # patch
     "swap-champion": "/lol-champ-select/v1/session/bench/swap/{championId}",

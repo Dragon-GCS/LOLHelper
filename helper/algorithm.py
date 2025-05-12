@@ -1,7 +1,8 @@
 from time import time
 from typing import List, Tuple
 
-TIME_LIMIT = 60 * 60 * 5    # 5 hours
+TIME_LIMIT = 60 * 60 * 5  # 5 hours
+
 
 def analysis_match_list(matches: List[dict], game_mode: str) -> Tuple[float, float, int, float]:
     """根据比赛记录计算召唤师kda、分均伤害和连胜/连败场次"""
@@ -14,7 +15,7 @@ def analysis_match_list(matches: List[dict], game_mode: str) -> Tuple[float, flo
         # 胜场数
         if detail["win"]:
             win += 1
-        if not match["gameMode"] == game_mode:
+        if match["gameMode"] != game_mode:
             continue
         # kda、分均伤害
         weight = 1 if (time() / 1000 - match["gameCreation"]) < TIME_LIMIT else 0.2

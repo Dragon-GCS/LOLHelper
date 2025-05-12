@@ -1,8 +1,12 @@
-class ClientNotStart(Exception):
+class HelperException(Exception): ...
+
+
+class ClientNotStart(HelperException): ...
+
+
+class GameEnd(HelperException):
     pass
 
-class GameEnd(Exception):
-    pass
 
-class GameStart(Exception):
+class GameStart(HelperException):
     pass
