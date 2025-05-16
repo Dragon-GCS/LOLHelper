@@ -15,6 +15,7 @@
 
 1. Release界面直接下载打包好的可执行文件
 2. 源码运行（需要有python环境）：
+
     ```shell
     > git clone https://github.com/Dragon-GCS/LOLHelper.git
     > cd LOLHelper
