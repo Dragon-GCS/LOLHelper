@@ -1,3 +1,4 @@
+import asyncio
 import json
 from threading import Thread
 from tkinter import BooleanVar, Text, Tk, Toplevel, ttk
@@ -72,10 +73,11 @@ class AutoPick(Toplevel):
         if not CONF.AUTO_PICK_CACHE.exists():
             logger.info("未找到英雄列表文件，正在下载...")
             client = LcuClient()
+            champions = asyncio.run(client.get(CONF.Route.AllChampions))
             self.champions = {
                 "not-selected": {
                     str(champion["id"]): f"{champion['name']} {champion['title']}"
-                    for champion in client.get(CONF.ROUTE["all-champions"]).json()
+                    for champion in champions
                 },
                 "selected": {},
             }

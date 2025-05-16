@@ -11,3 +11,8 @@ dependencies = [
     "requests",
     "websockets",
 ]
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.13.0",
+]

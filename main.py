@@ -12,10 +12,8 @@ from helper.gui import UI
 from helper.lcu import LcuClient
 
 logger.remove()
-logger.add(
-    sys.stdout,
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:^10} | {message}</level>",
-)
+if sys.stdout is not None:
+    logger.add(sys.stdout)
 
 
 async def monitor_client(client: LcuClient):
