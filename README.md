@@ -29,6 +29,8 @@
 - [awesome lpl developer tools](https://github.com/CommunityDragon/awesome-league#developer-tools)
 - [riot developer docs](https://developer.riotgames.com/docs/lol)
 - [lcu api doc](https://lcu.vivide.re/)
+- [lcu api swagger doc](https://www.mingweisamuel.com/lcu-schema/tool/)
+- [ws event](https://hextechdocs.dev/getting-started-with-the-lcu-websocket/)
 
 ## Update log
 

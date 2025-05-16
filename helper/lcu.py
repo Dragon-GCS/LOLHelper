@@ -4,29 +4,23 @@
 # Created at 2022/05/27 10:06
 # Edit with VS Code
 
+import asyncio
 import json
-import time
-import warnings
+from typing import Coroutine, Optional, TypedDict, Union, cast
 
 import psutil
-import requests
-
-warnings.filterwarnings("ignore")
-
-from multiprocessing.pool import ThreadPool
-from threading import Thread
-from typing import Dict, List, Optional, Tuple, TypedDict, Union
-
+from httpx import AsyncClient, HTTPStatusError
 from loguru import logger
-from requests import Response
 
 from . import config as CONF
 from .algorithm import analysis_match_list
-from .config import ROUTE
+from .config import Route
 from .exceptions import ClientNotStart, GameEnd, GameStart
 
+_backgrounds = set()
 
-def get_lcu_info() -> Tuple[str, str]:
+
+def get_lcu_info() -> tuple[str, str]:
     """Get the lcu client token and port by process command line
 
     Returns:
@@ -50,8 +44,8 @@ def get_lcu_info() -> Tuple[str, str]:
 
 
 class MemberMatches(TypedDict):
-    summoner_id: int  # 玩家id
-    matches: List[Dict]  # 最近20场游戏数据
+    puuid: str  # 玩家id
+    matches: list[dict]  # 最近20场游戏数据
 
 
 class LcuClient:
@@ -65,51 +59,66 @@ class LcuClient:
         if not token:
             raise ClientNotStart
         self.base_url = f"https://riot:{token}@127.0.0.1:{port}"
-        self.get_summoner_info()
+        self.client = AsyncClient(base_url=self.base_url, verify=False)
         self.picked = False
         self.game_mode = ""
-        self.members_matches: List[MemberMatches] = []
+        self.members_matches: list[MemberMatches] = []
+        self.champion_cache = {}
+        self._tasks = set()
 
-    def get(self, route: str) -> Response:
-        return requests.get(self.base_url + route, verify=False)
+    def create_task(self, coro: Coroutine):
+        task = asyncio.create_task(coro)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
-    def patch(self, route: str, data: Optional[dict] = None) -> Response:
-        return requests.patch(self.base_url + route, json=data, verify=False)
+    async def _request(self, method: str, api: str, **kwargs) -> dict:
+        resp = await self.client.request(method, api, **kwargs)
+        resp.raise_for_status()
+        if resp.status_code == 204:
+            return {}
+        return resp.json()
 
-    def post(self, route: str, data: Optional[dict] = None) -> Response:
-        return requests.post(self.base_url + route, json=data, verify=False)
+    async def get(self, api: str) -> dict:
+        return await self._request("GET", api)
 
-    def send_message(self, session_id: str, message: str):
+    async def patch(self, api: str, data: Optional[dict] = None) -> dict:
+        return await self._request("PATCH", api, json=data)
+
+    async def post(self, api: str, data: Optional[dict] = None) -> dict:
+        return await self._request("POST", api, json=data)
+
+    async def send_message(self, session_id: str, message: str):
         """发送消息至指定会话"""
 
         logger.info("发送消息:\n{}", message)
-        return self.post(
-            ROUTE["conversation-msg"].format(conversationId=session_id),
+        return await self.post(
+            Route.ConversationMsg.format(conversationId=session_id),
             data={"body": message, "type": "chat"},
         )
 
-    def get_champion_name_by_id(self, champion_id: int) -> str:
+    async def get_champion_name_by_id(self, champion_id: int) -> str:
         """根据英雄ID获取英雄名称"""
+        if champion_id not in self.champion_cache:
+            info = await self.get(Route.Champions.format(id=champion_id))
+            self.champion_cache[champion_id] = f"{info['name']} {info['title']}"
+        return self.champion_cache[champion_id]
 
-        info = self.get(ROUTE["champions"].format(id=champion_id)).json()
-        return f"{info['name']} {info['title']}"
-
-    def get_champion_select_session_id(self) -> str:
+    async def get_champion_select_session_id(self) -> str:
         """获取英雄选择界面对应聊天会话id"""
 
-        for conversation in self.get(ROUTE["conversations"]).json():
+        for conversation in await self.get(Route.Conversations):
             if conversation["type"] == "championSelect":
                 return conversation["id"]
         return ""
 
-    def get_current_game_mode(self) -> str:
+    async def get_current_game_mode(self) -> str:
         """获取当前游戏模式"""
 
-        return self.get(ROUTE["session"]).json().get("map", {}).get("gameMode", "")
+        return (await self.get(Route.Session)).get("map", {}).get("gameMode", "")
 
-    def get_match_history(
-        self, summoner_id: int, begin_index: int = 0, num: int = 20
-    ) -> List[dict]:
+    async def get_match_history(
+        self, puuid: str, begin_index: int = 0, num: int = 20
+    ) -> list[dict]:
         """获取指定召唤师的比赛记录，每次请求最多返回20条记录
 
         Args:
@@ -118,71 +127,61 @@ class LcuClient:
         Returns:
             returns: 比赛记录列表
         """
-        return (
-            self.get(
-                ROUTE["match-list"].format(
-                    summonerId=summoner_id, begIdx=begin_index, endIdx=begin_index + num
-                )
-            )
-            .json()
-            .get("games", {})
-            .get("games", [])
+        resp = await self.get(
+            Route.MatchList.format(puuid=puuid, begIdx=begin_index, endIdx=begin_index + num)
         )
+        return resp.get("games", {}).get("games", [])
 
-    def get_match_detail(self, game_id: str) -> dict:
+    async def get_match_detail(self, game_id: str) -> dict:
         """Game match detail by specified game id"""
 
-        return self.get(ROUTE["match-detail"].format(gameId=game_id)).json()
+        return await self.get(Route.MatchDetail.format(gameId=game_id))
 
-    def get_messages(self, session_id: str) -> List[dict]:
-        """获取指定会话的所有消息"""
+    async def get_room_summoners_list(self, session_id: str) -> list[str]:
+        """通过消息列表获取己方所有玩家的id"""
 
-        return self.get(ROUTE["conversation-msg"].format(conversationId=session_id)).json()
-
-    def get_room_summoners_list(self, session_id: str) -> List[int]:
-        """获取己方所有玩家的id"""
-
-        messages = []
+        summoners = []
         for _ in range(3):
-            messages = [
-                msg["fromSummonerId"]
-                for msg in self.get_messages(session_id)
+            messages = await self.get(Route.ChatInfo.format(roomId=session_id))
+            summoners = [
+                msg["fromId"]
+                for msg in messages
                 if msg["body"] == "joined_room" and msg["type"] == "system"
             ]
-            if len(messages) >= 5:
-                return messages
-            time.sleep(0.5)
+            if len(summoners) >= 5:
+                return summoners
+            await asyncio.sleep(0.5)
 
-        return messages
+        return summoners
 
-    def get_summoner_info(self):
+    async def get_summoner_info(self):
         """获取当前登录的召唤师的基本信息"""
 
-        summoner_info = self.get(ROUTE["current-summoner"]).json()
-        self.name = summoner_info["displayName"]
+        summoner_info = await self.get(Route.CurrentSummoner)
+        self.name = summoner_info["gameName"]
         self.puuid = summoner_info["puuid"]
         self.rolls = summoner_info["rerollPoints"]["numberOfRolls"]
         self.summoner_id = summoner_info["summonerId"]
         logger.info("当前召唤师: {}", self.name)
 
-    def accept_game(self):
+    async def accept_game(self):
         """接受游戏，发送请求至返回码为2xx"""
 
         while True:
-            resp = self.post(ROUTE["accept-game"])
-            if str(resp.status_code).startswith("2"):
-                logger.info("对局已接受")
+            try:
+                await self.post(Route.AcceptGame)
+            except HTTPStatusError:
+                await asyncio.sleep(1)
+            else:
                 break
-            time.sleep(1)
+        logger.info("对局已接受")
 
-    def calculate_summoner_score(self, summoner_id: int) -> Tuple[MemberMatches, str]:
+    async def calculate_summoner_score(self, puuid: str) -> tuple[MemberMatches, str]:
         """计算指定玩家的分数，返回玩家名称和分数，返回需要发送的消息和近20场游戏数据"""
 
-        summoner_name = self.get(ROUTE["summoner"].format(summonerId=summoner_id)).json()[
-            "displayName"
-        ]
-        matches = self.get_match_history(summoner_id, 0)
-        game_mode = self.get_current_game_mode()
+        summoner_name = (await self.get(Route.Summoner.format(puuid=puuid)))["displayName"]
+        matches = await self.get_match_history(puuid, 0)
+        game_mode = await self.get_current_game_mode()
         kda, damage_per_minus, repeats, win_rate = analysis_match_list(matches, game_mode)
         message = (
             f"{summoner_name}战绩信息：\n"
@@ -190,7 +189,7 @@ class LcuClient:
             f"胜率={win_rate:2.0%}，{str(repeats) + '连胜' if repeats > 0 else str(-repeats) + '连败'}"
         )
         return MemberMatches(
-            summoner_id=summoner_id,
+            puuid=puuid,
             matches=[
                 dict(
                     (
@@ -208,38 +207,39 @@ class LcuClient:
             ],
         ), message
 
-    def analysis_summoners(self):
+    async def analysis_summoners(self):
         """根据聊天信息获取己方所有召唤师，分析并计算己方的分数"""
 
         for _ in range(3):
-            time.sleep(0.5)
-            if session_id := self.get_champion_select_session_id():
+            await asyncio.sleep(0.5)
+            if session_id := await self.get_champion_select_session_id():
                 break
         else:
             logger.error("Not found champion select session")
             return
-        summoners = self.get_room_summoners_list(session_id)
+        summoners = await self.get_room_summoners_list(session_id)
         logger.info("开始计算玩家分数: {}", summoners)
 
-        with ThreadPool(5) as pool:
-            for matches, msg in pool.imap(self.calculate_summoner_score, summoners):
-                time.sleep(0.5)  # 防止晚进入房间的玩家看不到信息
-                self.send_message(session_id, msg)
-                self.members_matches.append(matches)
-        self.send_message(session_id, "乱斗助手下载地址：gitee上搜lolhelper。作者Dragon-GCS")
+        for matches, msg in await asyncio.gather(
+            *[self.calculate_summoner_score(puuid) for puuid in summoners]
+        ):
+            await asyncio.sleep(0.5)
+            await self.send_message(session_id, msg)
+            self.members_matches.append(matches)
 
-    def pick_champion(self, champion_id: int, session_info: dict):
+        await self.send_message(session_id, "乱斗助手：github/Dragon-GCS/lolhelper")
+
+    async def pick_champion(self, champion_id: int, session_info: dict):
         """选择英雄"""
 
-        # session_info = self.get(ROUTE["BpSession"]).json()
         if self.picked:
             return
 
         if session_info["benchEnabled"]:
             if champion_id in session_info["benchChampionIds"]:
-                self.post(ROUTE["swap-champion"].format(championId=champion_id))
+                await self.post(Route.SwapChampion.format(championId=champion_id))
                 self.picked = True
-                logger.info("自动选择英雄: {}", self.get_champion_name_by_id(champion_id))
+                logger.info("自动选择英雄: {}", await self.get_champion_name_by_id(champion_id))
             return
 
         for actions in session_info.get("actions", []):
@@ -249,15 +249,15 @@ class LcuClient:
                     and action["type"] == "pick"
                     and action["isInProgress"]
                 ):
-                    self.patch(
-                        ROUTE["bp-champion"].format(actionId=action["id"]),
+                    await self.patch(
+                        Route.BpChampion.format(actionId=action["id"]),
                         data={"completed": True, "type": "pick", "championId": champion_id},
                     )
                     self.picked = True
-                    logger.info("自动选择英雄: {}", self.get_champion_name_by_id(champion_id))
+                    logger.info("自动选择英雄: {}", await self.get_champion_name_by_id(champion_id))
                     return
 
-    def auto_pick(self, data: Dict):
+    async def auto_pick(self, data: dict):
         """自动选择英雄"""
         for champion in CONF.AUTO_PICKS:
             champion = int(champion)
@@ -268,9 +268,9 @@ class LcuClient:
                 ):
                     self.picked = True
                     return
-            self.pick_champion(champion, data)
+            await self.pick_champion(champion, data)
 
-    def handle_ws_response(self, resp: Union[str, bytes]):
+    async def handle_ws_response(self, resp: Union[str, bytes]):
         """监听并处理Lcu客户端通过WebSocket发送的消息，并在切换GameFlow时进行处理"""
 
         if not resp:
@@ -285,15 +285,15 @@ class LcuClient:
         if not content["data"]:
             return
 
-        if content["uri"] == ROUTE["GameFlow"]:
+        if content["uri"] == Route.GameFlow:
             logger.info(f"切换客户端状态: {content['data']}")
             if content["data"] == "ChampSelect":
                 self.picked = False
-                logger.info("当前游戏模式: {}", self.get_current_game_mode())
-                if CONF.AUTO_ANALYSIS:
-                    Thread(target=self.analysis_summoners).start()
+                logger.info("当前游戏模式: {}", await self.get_current_game_mode())
+                self.create_task(self.analysis_summoners())
+
             if content["data"] == "ReadyCheck" and CONF.AUTO_CONFIRM:
-                self.accept_game()
+                await self.accept_game()
             if content["data"] == "PreEndOfGame":
                 raise GameEnd()
             if content["data"] == "InProgress":
@@ -304,14 +304,23 @@ class LcuClient:
                     f.write("\n")
                 self.members_matches = []
 
-        # if content["uri"] == ROUTE["current-champion"]:
-        #     logger.info(
-        #         "当前英雄：{}", self.get_champion_name_by_id(content["data"]))
-
-        if not self.picked and content["uri"] == ROUTE["BpSession"] and CONF.AUTO_PICK_SWITCH:
-            self.auto_pick(content["data"])  # type: ignore
+        if (
+            not self.picked
+            and content["uri"] == Route.BpSession
+            and content["eventType"] == "Update"
+            and CONF.AUTO_PICK_SWITCH
+        ):
+            await self.auto_pick(content["data"])  # type: ignore
 
 
 if __name__ == "__main__":
-    lcu = LcuClient()
-    print(lcu.get_match_history(lcu.summoner_id, 0, 1))
+
+    async def main():
+        lcu = LcuClient()
+        print(lcu.base_url)
+        await lcu.get_summoner_info()
+        print(await lcu.get_current_game_mode())
+        print(await lcu.get_champion_select_session_id())
+        print(await lcu.analysis_summoners())
+
+    asyncio.run(main())

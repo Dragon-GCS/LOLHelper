@@ -5,12 +5,27 @@ TIME_LIMIT = 60 * 60 * 5  # 5 hours
 
 
 def analysis_match_list(matches: List[dict], game_mode: str) -> Tuple[float, float, int, float]:
-    """根据比赛记录计算召唤师kda、分均伤害和连胜/连败场次"""
+    """根据比赛记录计算召唤师kda、分均伤害和连胜/连败场次
+
+    Args:
+        matches (List[dict]): 比赛记录列表
+        game_mode (str): 游戏模式
+    Returns:
+        Tuple[float, float, int, float]: kda、分均伤害、连胜/连败场次、胜率
+    """
 
     # total_weight是总权重
     stop = False
     total = kills = deaths = assists = damages = repeats = win = 0
-    for match in sorted(matches, key=lambda x: x["gameCreation"], reverse=True):
+    valid_matches = sorted(
+        filter(lambda match: match["gameMode"] == game_mode, matches),
+        key=lambda x: x["gameCreation"],
+        reverse=True,
+    )
+    if not valid_matches:
+        return 0, 0, 0, 0
+
+    for match in valid_matches:
         detail = match["participants"][0]["stats"]
         # 胜场数
         if detail["win"]:
