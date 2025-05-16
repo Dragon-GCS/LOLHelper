@@ -8,7 +8,6 @@ dependencies = [
     "httpx",
     "loguru",
     "psutil",
-    "requests",
     "websockets",
 ]
 
