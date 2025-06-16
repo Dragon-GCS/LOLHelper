@@ -6,7 +6,7 @@
 
 import asyncio
 import json
-from typing import Coroutine, Optional, TypedDict, Union, cast
+from typing import Coroutine, Optional, TypedDict, Union
 
 import psutil
 from httpx import AsyncClient, HTTPStatusError
@@ -179,7 +179,7 @@ class LcuClient:
     async def calculate_summoner_score(self, puuid: str) -> tuple[MemberMatches, str]:
         """计算指定玩家的分数，返回玩家名称和分数，返回需要发送的消息和近20场游戏数据"""
 
-        summoner_name = (await self.get(Route.Summoner.format(puuid=puuid)))["displayName"]
+        summoner_name = (await self.get(Route.Summoner.format(puuid=puuid)))["gameName"]
         matches = await self.get_match_history(puuid, 0)
         game_mode = await self.get_current_game_mode()
         kda, damage_per_minus, repeats, win_rate = analysis_match_list(matches, game_mode)
@@ -236,10 +236,12 @@ class LcuClient:
             return
 
         if session_info["benchEnabled"]:
-            if champion_id in session_info["benchChampionIds"]:
-                await self.post(Route.SwapChampion.format(championId=champion_id))
-                self.picked = True
-                logger.info("自动选择英雄: {}", await self.get_champion_name_by_id(champion_id))
+            for champion in session_info["benchChampions"]:
+                if champion["championId"] == champion_id:
+                    await self.post(Route.SwapChampion.format(championId=champion_id))
+                    self.picked = True
+                    logger.info("自动选择英雄: {}", await self.get_champion_name_by_id(champion_id))
+                    return
             return
 
         for actions in session_info.get("actions", []):
